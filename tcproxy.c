@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <string.h>
 
 #define MAX_CONS 8
 #define DEFAULT_RECV_STORE 64
@@ -12,6 +13,7 @@
 
 struct flex_mem {
     char *mem;
+    unsigned int pos;
     unsigned int size;
 }
 
@@ -25,6 +27,9 @@ struct tcproxy_state {
     char inSockStates[MAX_CONS];
     char cons;
 }
+
+char headerMatch[] = "CONNECT _ HTTP/1.1";
+#define STATE_URL 8
 
 int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short port) {
     state->sockIn = socket(AF_INET, SOCKET_STREAM, 0);
@@ -66,18 +71,40 @@ int tcpserver_tick(struct tcproxy_state *state) {
         } else {
             state->inSocks[state->cons] = state->err;
             state->outSocks[state->cons] = -1;
-            state->urls[state->cons].
+            state->inSockStates[state->cons] = 0;
             state->cons++;
         }
     }
     char buff[MAX_RECV_BUFF];
     int amountRead;
-    for (int i; i < MAX_CONS; i++) {
-        amountRead = read(state->inSocks[state->cons - 1], buff, MAX_RECV_BUFF);
+    for (int i = 0; i < state->cons; i++) {
+        amountRead = read(state->inSocks[i], buff, MAX_RECV_BUFF);
         if (amountRead < 0) {
             if (isRealErr(amountRead)) {
                 state->err = amountRead;
                 return -2;
             }
         } else if (amountRead == 0) {
-            if 
+            if (state->inSockStates[i] == STATE_URL) {
+#ifdef ZERO_SECURE
+                zero(state->urls[i].mem, state->urls[i].size);
+#endif
+                free(state->urls[i].mem);
+            } else if (state->inSockStates[i] > STATE_URL) {
+                close(state->outSocks[i]);
+            }
+            close(state->inSocks[i]);
+            memmove(state->inSocks + i, state->inSocks + i + 1, (state->cons - i) * 2);
+            memmove(state->outSocks + i, state->outSocks + i + 1, (state->cons - i) * 2);
+            memmove(state->inSockStates + i, state->inSockStates + i + 1, state->cons - i);
+            memmove(state->urls + i, state->urls + i + 1, (state->cons - i) * sizeof(struct flex_mem));
+            state->cons--;
+#ifdef ZERO_SECURE
+            state->inSocks[state->cons] = 0;
+            state->outSocks[state->cons] = 0;
+            state->inSockStates[state->cons] = 0;
+            zero(state->urls + state->cons, sizeof(struct flex_mem));
+#endif
+        } else {
+            if (state->inSockStates == STATE_URL) {
+                

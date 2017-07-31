@@ -66,6 +66,9 @@ int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short
     state->err = 0;
 }
 
+void cleanup(struct tcproxy *state, int sock) {
+    
+
 int tcpserver_tick(struct tcproxy_state *state) {
     if (state->cons < MAX_CONS) {
         state->err = accept(state->sockIn, NULL, NULL);
@@ -81,6 +84,7 @@ int tcpserver_tick(struct tcproxy_state *state) {
         }
     }
     char buff[MAX_RECV_BUFF];
+    char *dtaP;
     int amountRead;
     for (int i = 0; i < state->cons; i++) {
         amountRead = read(state->inSocks[i], buff, MAX_RECV_BUFF);
@@ -112,8 +116,11 @@ int tcpserver_tick(struct tcproxy_state *state) {
             zero(state->urls + state->cons, sizeof(struct flex_mem));
 #endif
         } else {
-            if ((state->inSockStates[i] < STATE_HEADERS) && (state->inSockStates[i] != STATE_URL)) {
-                /* TODO */
+            dtaP = buff;
+            if ((state->inSockStates[i] < STATE_HEADERS) && (state->inSockStates[i] < STATE_URL)) {
+                for (int j = state->inSockStates[i]; j < min(state->inSockStates[i] + amountRead, STATE_URL) {
+                    if (*(dtaP++) != headerMatch[j]) {
+                        
             }
             if (state->inSockStates[i] == STATE_URL) {
                 /* TODO */
@@ -121,13 +128,22 @@ int tcpserver_tick(struct tcproxy_state *state) {
             if ((state->inSockStates[i] > STATE_URL) && (state->inSockStates[i] < STATE_HEADERS)) {
                 /* TODO */
             }
-            if (state->inSockStates)
-            if (state->inSockStates[i] == STATE_PROXY) {
-                char *dtaLeft = buff;
-                while (amountRead != 0) {
-                    int h = send(state->outSocks[i], dtaLeft, amountRead);
-                    amountRead -= h;
-                    dtaLeft += h;
+            if ((state->inSockStates[i] == STATE_HEADERS) || (state->inSockStates[i] == STATE_HEADERS_FREE)) {
+                while ((amountRead > 0) && (state->inSockStates[i] <= STATE_HEADERS_FREE)) {
+                    if (*(dtaP++) == '\n') {
+                        state->inSockStates[i]++;
+                    } else {
+                        if (state->inSockStates[i] == STATE_HEADERS_FREE) {
+                            state->inSockStates[i]--;
+                        }
+                    }
+                    amountRead--;
                 }
-            } else {
-                if (headerMatch state->inSockStates[i]
+            }
+            if (state->inSockStates[i] == STATE_PROXY) {
+                while (amountRead != 0) {
+                    int h = send(state->outSocks[i], dtaP, amountRead);
+                    amountRead -= h;
+                    dtaP += h;
+                }
+            }

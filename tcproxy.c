@@ -28,8 +28,13 @@ struct tcproxy_state {
     char cons;
 }
 
-char headerMatch[] = "CONNECT _ HTTP/1.1";
+char headerMatch[] = "CONNECT _ HTTP/1.1\n";
 #define STATE_URL 8
+#define STATE_HEADERS 19
+#define STATE_HEADERS_FREE 20
+#define STATE_PROXY 21
+
+char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\nServer: tcproxy\nContent-Length: 0\n\n"
 
 int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short port) {
     state->sockIn = socket(AF_INET, SOCKET_STREAM, 0);
@@ -85,12 +90,13 @@ int tcpserver_tick(struct tcproxy_state *state) {
                 return -2;
             }
         } else if (amountRead == 0) {
-            if (state->inSockStates[i] == STATE_URL) {
+            if ((state->inSockStates[i] >= STATE_URL) && (state->inSockStates[i] < STATE_PROXY)) {
 #ifdef ZERO_SECURE
                 zero(state->urls[i].mem, state->urls[i].size);
 #endif
                 free(state->urls[i].mem);
-            } else if (state->inSockStates[i] > STATE_URL) {
+            }
+            if (state->inSockStates[i] == STATE_PROXY) {
                 close(state->outSocks[i]);
             }
             close(state->inSocks[i]);
@@ -106,5 +112,22 @@ int tcpserver_tick(struct tcproxy_state *state) {
             zero(state->urls + state->cons, sizeof(struct flex_mem));
 #endif
         } else {
-            if (state->inSockStates == STATE_URL) {
-                
+            if ((state->inSockStates[i] < STATE_HEADERS) && (state->inSockStates[i] != STATE_URL)) {
+                /* TODO */
+            }
+            if (state->inSockStates[i] == STATE_URL) {
+                /* TODO */
+            }
+            if ((state->inSockStates[i] > STATE_URL) && (state->inSockStates[i] < STATE_HEADERS)) {
+                /* TODO */
+            }
+            if (state->inSockStates)
+            if (state->inSockStates[i] == STATE_PROXY) {
+                char *dtaLeft = buff;
+                while (amountRead != 0) {
+                    int h = send(state->outSocks[i], dtaLeft, amountRead);
+                    amountRead -= h;
+                    dtaLeft += h;
+                }
+            } else {
+                if (headerMatch state->inSockStates[i]

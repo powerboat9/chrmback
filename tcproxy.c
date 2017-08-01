@@ -6,7 +6,8 @@
 #include <string.h>
 
 #define MAX_CONS 8
-#define DEFAULT_RECV_STORE 64
+#define DEFAULT_URL_STORE 64
+#define MAX_URL_STORE 2048
 #define MAX_RECV_BUFF 256
 
 #define isRealErr(e) ((e < 0) && (e != EAGAIN) && (e != EWOULDBLOCK))
@@ -28,8 +29,9 @@ struct tcproxy_state {
     char cons;
 }
 
-char headerMatch[] = "CONNECT _ HTTP/1.1\n";
-#define STATE_URL 8
+char headerMatch[] = "CONNECT __HTTP/1.1\n";
+#define STATE_URL_SETUP 8
+#define STATE_URL 9
 #define STATE_HEADERS 19
 #define STATE_HEADERS_FREE 20
 #define STATE_PROXY 21
@@ -66,8 +68,57 @@ int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short
     state->err = 0;
 }
 
-void cleanup(struct tcproxy *state, int sock) {
+void _cleanup(struct tcproxy *state, int sock, unsigned char bringDown) {
+    if (state->inSockStates[sock] == STATE_PROXY) {
+        close(state->outSocks[sock]);
+    } else if (state->inSockStates[sock] >= STATE_URL) {
+#ifdef ZERO_SECURE
+        zero(state->urls[sock].mem, state->urls[sock].size);
+#endif
+        free(state->urls[sock].mem);
+    }
+    close(state->inSocks[sock]);
+    if (bringDown) {
+        memmove(state->inSocks + sock, state->inSocks + sock + 1, 2 * (state->cons - sock) - 2);
+        memmove(state->outSocks + sock, state->outSocks + sock + 1, 2 * (state->cons - sock) - 2);
+        memmove(state->inSockStates + sock, state->inSockStates + sock + 1, state->cons - sock - 1);
+        memmove(state->urls + sock, state->urls + sock + 1, (state->cons - sock - 1) * sizeof(struct flex_mem));
+        state->cons--;
+        sock = state->cons - 1;
+    }
+#ifdef ZERO_SECURE
+    state->inSocks[sock] = 0;
+    state->outSocks[sock] = 0;
+    state->inSockStates[sock] = 0;
+    zero(state->urls + sock, sizeof(struct flex_mem));
+#endif
+}
+
+#define cleanup(x, y) _cleanup(x, y, 1)
+
+int getURLSock(struct flex_mem *url) {
     
+
+int sendMessage(int sock, char *buff, unsigned int size) {
+    int r;
+    while (size > 0) {
+        r = send(sock, buff, size);
+        if (r > 0) {
+            buff += r;
+            size += r;
+        }
+        if ((r == -1) && (errno != EINTR)) {
+            return errno;
+        }
+    }
+}
+
+void _cleanupWithSend(struct tcproxy *state, int sock, unsigned char bringDown) {
+    sendMessage(sock, nopeNopeNope, strlen(nopeNopeNope));
+    _cleanup(state, sock, bringDown);
+}
+
+#define cleanupWithSend(x, y) _cleanupWithSend(x, y, 1)
 
 int tcpserver_tick(struct tcproxy_state *state) {
     if (state->cons < MAX_CONS) {
@@ -94,36 +145,37 @@ int tcpserver_tick(struct tcproxy_state *state) {
                 return -2;
             }
         } else if (amountRead == 0) {
-            if ((state->inSockStates[i] >= STATE_URL) && (state->inSockStates[i] < STATE_PROXY)) {
-#ifdef ZERO_SECURE
-                zero(state->urls[i].mem, state->urls[i].size);
-#endif
-                free(state->urls[i].mem);
-            }
-            if (state->inSockStates[i] == STATE_PROXY) {
-                close(state->outSocks[i]);
-            }
-            close(state->inSocks[i]);
-            memmove(state->inSocks + i, state->inSocks + i + 1, (state->cons - i) * 2);
-            memmove(state->outSocks + i, state->outSocks + i + 1, (state->cons - i) * 2);
-            memmove(state->inSockStates + i, state->inSockStates + i + 1, state->cons - i);
-            memmove(state->urls + i, state->urls + i + 1, (state->cons - i) * sizeof(struct flex_mem));
-            state->cons--;
-#ifdef ZERO_SECURE
-            state->inSocks[state->cons] = 0;
-            state->outSocks[state->cons] = 0;
-            state->inSockStates[state->cons] = 0;
-            zero(state->urls + state->cons, sizeof(struct flex_mem));
-#endif
+            cleanup(state, i);
+            i--;
+            continue;
         } else {
             dtaP = buff;
-            if ((state->inSockStates[i] < STATE_HEADERS) && (state->inSockStates[i] < STATE_URL)) {
-                for (int j = state->inSockStates[i]; j < min(state->inSockStates[i] + amountRead, STATE_URL) {
-                    if (*(dtaP++) != headerMatch[j]) {
-                        
+            /* Before url */
+            while ((state->inSockStates[i] < STATE_URL_SETUP) && (amountRead > 0)) {
+                if (*(dtaP++) != headerMatch[state->inSockStates[i]]) {
+                    cleanupWithSend(state, sock);
+                    i--;
+                    continue;
+                }
+                state->inSockStates[i]++;
             }
-            if (state->inSockStates[i] == STATE_URL) {
-                /* TODO */
+            if (state->inSockStates[i] == STATE_URL_SETUP) {
+                state->urls[i].mem = malloc(DEFAULT_URL_STORE);
+                state->urls[i].size = DEFAULT_URL_STORE;
+                state->urls[i].pos = 0;
+                state->inSockStates[i]++;
+            }
+            while ((state->inSockStates[i] == STATE_URL) && (amountRead > 0)) {
+                char in = *(dtaP++);
+                if (in == ' ') {
+                    state->inSockStates++;
+                } else {
+                    if (state->urls[i].size = state->urls[i].size) {
+                        state->urls[i].size *= 2;
+                        state->urls[i].mem = realloc(state->urls[i].mem, state->urls[i].size);
+                    }
+                    state->urls[i].mem[state->urls[i].pos++] = in;
+                }
             }
             if ((state->inSockStates[i] > STATE_URL) && (state->inSockStates[i] < STATE_HEADERS)) {
                 /* TODO */
@@ -141,9 +193,9 @@ int tcpserver_tick(struct tcproxy_state *state) {
                 }
             }
             if (state->inSockStates[i] == STATE_PROXY) {
-                while (amountRead != 0) {
-                    int h = send(state->outSocks[i], dtaP, amountRead);
-                    amountRead -= h;
-                    dtaP += h;
+                if (sendMessage(state->inSocks[i], dtaP, amountRead) < 0) {
+                    cleanupWithSend(state, state->inSocks[i]);
+                    i--;
+                    continue;
                 }
             }

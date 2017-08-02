@@ -34,9 +34,13 @@ char headerMatch[] = "CONNECT __HTTP/1.1\n";
 #define STATE_URL 9
 #define STATE_HEADERS 19
 #define STATE_HEADERS_FREE 20
-#define STATE_PROXY 21
+#define STATE_PROXY_INIT 21
+#define STATE_PROXY 22
 
 char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\nServer: tcproxy\nContent-Length: 0\n\n"
+
+char ftpString[] = "ftp://"
+#define FTP_LEN 6
 
 int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short port) {
     state->sockIn = socket(AF_INET, SOCKET_STREAM, 0);
@@ -153,10 +157,11 @@ int tcpserver_tick(struct tcproxy_state *state) {
             /* Before url */
             while ((state->inSockStates[i] < STATE_URL_SETUP) && (amountRead > 0)) {
                 if (*(dtaP++) != headerMatch[state->inSockStates[i]]) {
-                    cleanupWithSend(state, sock);
+                    cleanupWithSend(state, i);
                     i--;
                     continue;
                 }
+                amountRead--;
                 state->inSockStates[i]++;
             }
             if (state->inSockStates[i] == STATE_URL_SETUP) {
@@ -171,14 +176,29 @@ int tcpserver_tick(struct tcproxy_state *state) {
                     state->inSockStates++;
                 } else {
                     if (state->urls[i].size = state->urls[i].size) {
-                        state->urls[i].size *= 2;
+                        unsigned int ne = state->urls[i].size * 2;
+                        if (ne > MAX_URL_STORE) {
+                            cleanupWithSend(state, i);
+                            i--;
+                            continue;
+                        } else {
+                            state->urls[i].size = ne;
+                        }
                         state->urls[i].mem = realloc(state->urls[i].mem, state->urls[i].size);
                     }
                     state->urls[i].mem[state->urls[i].pos++] = in;
                 }
             }
-            if ((state->inSockStates[i] > STATE_URL) && (state->inSockStates[i] < STATE_HEADERS)) {
-                /* TODO */
+            if (state->inSockStates[i] > STATE_URL) {
+                while ((state->inSockStates[i] < STATE_HEADERS) && (amountRead > 0)) {
+                    if (*(dtaP++) != headerMatch[state->inSockStates[i]]) {
+                        cleanupWithSend(state, i);
+                        i--;
+                        continue;
+                    }
+                    amountRead++;
+                    state->inSockStates[i]++;
+                }
             }
             if ((state->inSockStates[i] == STATE_HEADERS) || (state->inSockStates[i] == STATE_HEADERS_FREE)) {
                 while ((amountRead > 0) && (state->inSockStates[i] <= STATE_HEADERS_FREE)) {
@@ -192,10 +212,16 @@ int tcpserver_tick(struct tcproxy_state *state) {
                     amountRead--;
                 }
             }
+            if (state->inSockStates[i] == STATE_PROXY_INIT) {
+                if (memcmp(
+            }
             if (state->inSockStates[i] == STATE_PROXY) {
-                if (sendMessage(state->inSocks[i], dtaP, amountRead) < 0) {
+                if (sendMessage(state->outSocks[i], dtaP, amountRead) < 0) {
                     cleanupWithSend(state, state->inSocks[i]);
                     i--;
                     continue;
                 }
             }
+        }
+    }
+}

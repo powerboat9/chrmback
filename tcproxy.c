@@ -37,10 +37,9 @@ char headerMatch[] = "CONNECT __HTTP/1.1\r";
 #define STATE_PROXY_INIT 21
 #define STATE_PROXY 22
 
-char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\rServer: tcproxy\rContent-Length: 0\r\r"
+char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\rServer: tcproxy\rContent-Length: 0\r\r";
 
-char ftpString[] = "ftp://"
-#define FTP_LEN 6
+char ok[] = "HTTP/1.1 200 Connection established\r\r";
 
 int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short port) {
     state->sockIn = socket(AF_INET, SOCKET_STREAM, 0);
@@ -72,6 +71,9 @@ int tcpserver_init(struct tcproxy_state *state, long interceptIP, unsigned short
     state->err = 0;
 }
 
+int getURLSocket(struct flex_mem *url) {
+    if
+
 void _cleanup(struct tcproxy *state, int sock, unsigned char bringDown) {
     if (state->inSockStates[sock] == STATE_PROXY) {
         close(state->outSocks[sock]);
@@ -99,9 +101,6 @@ void _cleanup(struct tcproxy *state, int sock, unsigned char bringDown) {
 }
 
 #define cleanup(x, y) _cleanup(x, y, 1)
-
-int getURLSock(struct flex_mem *url) {
-    
 
 int sendMessage(int sock, char *buff, unsigned int size) {
     int r;

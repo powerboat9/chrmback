@@ -29,7 +29,7 @@ struct tcproxy_state {
     char cons;
 }
 
-char headerMatch[] = "CONNECT __HTTP/1.1\n";
+char headerMatch[] = "CONNECT __HTTP/1.1\r";
 #define STATE_URL_SETUP 8
 #define STATE_URL 9
 #define STATE_HEADERS 19
@@ -37,7 +37,7 @@ char headerMatch[] = "CONNECT __HTTP/1.1\n";
 #define STATE_PROXY_INIT 21
 #define STATE_PROXY 22
 
-char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\nServer: tcproxy\nContent-Length: 0\n\n"
+char nopeNopeNope[] = "HTTP/1.1 400 Bad Request\rServer: tcproxy\rContent-Length: 0\r\r"
 
 char ftpString[] = "ftp://"
 #define FTP_LEN 6
